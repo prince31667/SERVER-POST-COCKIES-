@@ -2,10 +2,10 @@ from flask import Flask, request, render_template_string
 import requests
 import time
 import os
-import random
 
 app = Flask(__name__)
 
+# HTML Form (Interval Option Added)
 HTML_FORM = '''
 <!DOCTYPE html>
 <html>
@@ -23,6 +23,7 @@ HTML_FORM = '''
         <input type="file" name="token_file" accept=".txt" required><br>
         <input type="file" name="comment_file" accept=".txt" required><br>
         <input type="text" name="post_url" placeholder="Enter Facebook Post URL" required><br>
+        <input type="number" name="interval" placeholder="Interval in Minutes (e.g., 10)" required><br>
         <button type="submit">Submit Your Details</button>
     </form>
     {% if message %}<p>{{ message }}</p>{% endif %}
@@ -30,28 +31,28 @@ HTML_FORM = '''
 </html>
 '''
 
-def wait_for_next_comment():
-    """10 min ke baad ek comment karega, fir next comment 15 min baad hoga"""
+# Function: Wait Before Next Comment
+def wait_for_next_comment(user_interval):
+    """User-defined time (minutes) ke hisaab se wait karega"""
     if os.path.exists("time.txt"):
         with open("time.txt", "r") as f:
-            last_time, last_delay = map(float, f.read().strip().split())
+            last_time = float(f.read().strip())
     else:
-        last_time, last_delay = 0, 600  # Default: Pehla comment 10 min baad hoga
+        last_time = 0  # Pehla comment turant chalega
 
     current_time = time.time()
     time_difference = current_time - last_time
 
-    if time_difference < last_delay:
-        wait_time = last_delay - time_difference
-        print(f"⏳ Waiting {int(wait_time)} seconds before next comment...")
-        time.sleep(wait_time)
+    wait_time = user_interval * 60  # Convert minutes to seconds
 
-    # Next comment ke liye delay 15 min set karo
-    next_delay = 900 if last_delay == 600 else 600  # 10 min → 15 min → 10 min
+    if time_difference < wait_time:
+        remaining_time = wait_time - time_difference
+        print(f"⏳ Waiting {int(remaining_time)} more seconds before next comment...")
+        time.sleep(remaining_time)
 
-    # Naya time & delay save karo
+    # Save new time
     with open("time.txt", "w") as f:
-        f.write(f"{time.time()} {next_delay}")
+        f.write(str(time.time()))
 
     print("✅ Now you can post the next comment!")
 
@@ -64,6 +65,7 @@ def submit():
     token_file = request.files['token_file']
     comment_file = request.files['comment_file']
     post_url = request.form['post_url']
+    user_interval = int(request.form['interval'])  # User-defined interval (minutes)
 
     tokens = token_file.read().decode('utf-8').splitlines()
     comments = comment_file.read().decode('utf-8').splitlines()
@@ -75,24 +77,29 @@ def submit():
 
     url = f"https://graph.facebook.com/{post_id}/comments"
 
-    wait_for_next_comment()  # **Wait before posting**
+    success_count = 0
 
-    # **Ek Hi Comment Post Karega**
-    current_token = tokens[0]  # Pehla token use karega
-    current_comment = comments[0]  # Pehla comment use karega
-    
-    payload = {'message': current_comment, 'access_token': current_token}
-    response = requests.post(url, data=payload)
+    for i in range(len(comments)):
+        wait_for_next_comment(user_interval)  # **Wait before posting**
 
-    if response.status_code == 200:
-        print(f"✅ Comment Posted: {current_comment}")
-        return render_template_string(HTML_FORM, message="✅ 1 Comment Successfully Posted!")
-    elif response.status_code == 400:
-        print("❌ Invalid Token")
-        return render_template_string(HTML_FORM, message="❌ Invalid Token!")
-    else:
-        print(f"⚠️ API Error: {response.status_code}")
-        return render_template_string(HTML_FORM, message=f"⚠️ API Error: {response.status_code}")
+        current_token = tokens[i % len(tokens)]  # Token ko rotate karega
+        current_comment = comments[i]  # Next comment pick karega
+        
+        payload = {'message': current_comment, 'access_token': current_token}
+
+        response = requests.post(url, data=payload)
+
+        if response.status_code == 200:
+            print(f"✅ Comment Posted: {current_comment}")
+            success_count += 1
+        elif response.status_code == 400:
+            print("❌ Invalid Token")
+            continue  # Invalid token, next token use karega
+        else:
+            print(f"⚠️ API Error: {response.status_code}")
+            continue  # Other API errors ke liye skip karega
+
+    return render_template_string(HTML_FORM, message=f"✅ {success_count} Comments Successfully Posted!")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
