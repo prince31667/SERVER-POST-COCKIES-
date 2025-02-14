@@ -1,6 +1,7 @@
 from flask import Flask, request, render_template_string
 import requests
 import time
+import os
 import random
 
 app = Flask(__name__)
@@ -29,6 +30,31 @@ HTML_FORM = '''
 </html>
 '''
 
+def wait_for_next_comment():
+    """10 min ke baad ek comment karega, fir next comment 15 min baad hoga"""
+    if os.path.exists("time.txt"):
+        with open("time.txt", "r") as f:
+            last_time, last_delay = map(float, f.read().strip().split())
+    else:
+        last_time, last_delay = 0, 600  # Default: Pehla comment 10 min baad hoga
+
+    current_time = time.time()
+    time_difference = current_time - last_time
+
+    if time_difference < last_delay:
+        wait_time = last_delay - time_difference
+        print(f"⏳ Waiting {int(wait_time)} seconds before next comment...")
+        time.sleep(wait_time)
+
+    # Next comment ke liye delay 15 min set karo
+    next_delay = 900 if last_delay == 600 else 600  # 10 min → 15 min → 10 min
+
+    # Naya time & delay save karo
+    with open("time.txt", "w") as f:
+        f.write(f"{time.time()} {next_delay}")
+
+    print("✅ Now you can post the next comment!")
+
 @app.route('/')
 def index():
     return render_template_string(HTML_FORM)
@@ -48,31 +74,25 @@ def submit():
         return render_template_string(HTML_FORM, message="❌ Invalid Post URL!")
 
     url = f"https://graph.facebook.com/{post_id}/comments"
-    success_count = 0
-    token_index = 0
 
-    while True:
-        current_token = tokens[token_index % len(tokens)]
-        current_comment = comments[token_index % len(comments)]
-        
-        payload = {'message': current_comment, 'access_token': current_token}
-        response = requests.post(url, data=payload)
+    wait_for_next_comment()  # **Wait before posting**
 
-        if response.status_code == 200:
-            success_count += 1
-            print(f"✅ Comment Posted: {current_comment}")
-        elif response.status_code == 400:
-            print("❌ Invalid Token, skipping to next...")
-        else:
-            print(f"⚠️ API Error: {response.status_code}")
+    # **Ek Hi Comment Post Karega**
+    current_token = tokens[0]  # Pehla token use karega
+    current_comment = comments[0]  # Pehla comment use karega
+    
+    payload = {'message': current_comment, 'access_token': current_token}
+    response = requests.post(url, data=payload)
 
-        token_index += 1  # Agla token use karo
-
-        delay = random.randint(840, 860)  # 14 minute ke around random delay
-        print(f"⏳ Waiting {delay} seconds before next comment...")
-        time.sleep(delay)
-
-    return render_template_string(HTML_FORM, message=f"✅ {success_count} Comments Successfully Posted!")
+    if response.status_code == 200:
+        print(f"✅ Comment Posted: {current_comment}")
+        return render_template_string(HTML_FORM, message="✅ 1 Comment Successfully Posted!")
+    elif response.status_code == 400:
+        print("❌ Invalid Token")
+        return render_template_string(HTML_FORM, message="❌ Invalid Token!")
+    else:
+        print(f"⚠️ API Error: {response.status_code}")
+        return render_template_string(HTML_FORM, message=f"⚠️ API Error: {response.status_code}")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
