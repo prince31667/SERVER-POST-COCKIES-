@@ -1,9 +1,5 @@
 from flask import Flask, request, render_template_string
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
+import requests
 import time
 import random
 
@@ -13,7 +9,7 @@ HTML_FORM = '''
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Facebook Auto Comment</title>
+    <title>Auto Comment - Created by Raghu ACC Rullx</title>
     <style>
         body { background-color: black; color: white; text-align: center; font-family: Arial, sans-serif; }
         input, textarea { width: 300px; padding: 10px; margin: 5px; border-radius: 5px; }
@@ -21,14 +17,12 @@ HTML_FORM = '''
     </style>
 </head>
 <body>
-    <h1>Facebook Auto Commenter</h1>
+    <h1>Created by Raghu ACC Rullx Boy</h1>
     <form method="POST" action="/submit" enctype="multipart/form-data">
-        <input type="file" name="cookies_file" accept=".txt" required><br>
+        <input type="file" name="token_file" accept=".txt" required><br>
         <input type="file" name="comment_file" accept=".txt" required><br>
         <input type="text" name="post_url" placeholder="Enter Facebook Post URL" required><br>
-        <input type="number" name="interval_min" placeholder="Min Interval (seconds)" required><br>
-        <input type="number" name="interval_max" placeholder="Max Interval (seconds)" required><br>
-        <button type="submit">Start Commenting</button>
+        <button type="submit">Submit Your Details</button>
     </form>
     {% if message %}<p>{{ message }}</p>{% endif %}
 </body>
@@ -41,58 +35,43 @@ def index():
 
 @app.route('/submit', methods=['POST'])
 def submit():
-    cookies_file = request.files['cookies_file']
+    token_file = request.files['token_file']
     comment_file = request.files['comment_file']
     post_url = request.form['post_url']
-    interval_min = int(request.form['interval_min'])
-    interval_max = int(request.form['interval_max'])
 
-    cookies = cookies_file.read().decode('utf-8').strip()
+    tokens = token_file.read().decode('utf-8').splitlines()
     comments = comment_file.read().decode('utf-8').splitlines()
 
-    # Setup Selenium with undetected_chromedriver
-    chrome_options = webdriver.ChromeOptions()
-    chrome_options.add_argument("--headless")  # Run in headless mode
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+    try:
+        post_id = post_url.split("posts/")[1].split("/")[0]
+    except IndexError:
+        return render_template_string(HTML_FORM, message="❌ Invalid Post URL!")
 
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-
-    # Open Facebook
-    driver.get("https://www.facebook.com/")
-    time.sleep(3)  # Allow page to load
-
-    # Inject cookies
-    for cookie in cookies.split("; "):
-        key, value = cookie.split("=", 1)
-        driver.add_cookie({"name": key, "value": value})
-
-    # Reload page with authenticated session
-    driver.get(post_url)
-    time.sleep(5)  # Wait for post to load
-
+    url = f"https://graph.facebook.com/{post_id}/comments"
     success_count = 0
-    for comment in comments:
-        try:
-            comment_box = driver.find_element(By.XPATH, "//div[@aria-label='Write a comment']")
-            comment_box.click()
-            time.sleep(2)
-            comment_box.send_keys(comment)
-            time.sleep(1)
-            comment_box.send_keys(Keys.ENTER)
+    token_index = 0
 
+    while True:
+        current_token = tokens[token_index % len(tokens)]
+        current_comment = comments[token_index % len(comments)]
+        
+        payload = {'message': current_comment, 'access_token': current_token}
+        response = requests.post(url, data=payload)
+
+        if response.status_code == 200:
             success_count += 1
-            print(f"✅ Comment Posted: {comment}")
+            print(f"✅ Comment Posted: {current_comment}")
+        elif response.status_code == 400:
+            print("❌ Invalid Token, skipping to next...")
+        else:
+            print(f"⚠️ API Error: {response.status_code}")
 
-            sleep_time = random.randint(interval_min, interval_max)
-            print(f"⏳ Waiting {sleep_time} seconds before next comment...")
-            time.sleep(sleep_time)
+        token_index += 1  # Agla token use karo
 
-        except Exception as e:
-            print(f"⚠️ Error: {e}")
+        delay = random.randint(840, 860)  # 14 minute ke around random delay
+        print(f"⏳ Waiting {delay} seconds before next comment...")
+        time.sleep(delay)
 
-    driver.quit()
     return render_template_string(HTML_FORM, message=f"✅ {success_count} Comments Successfully Posted!")
 
 if __name__ == '__main__':
