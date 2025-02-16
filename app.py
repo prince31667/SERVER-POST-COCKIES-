@@ -33,14 +33,17 @@ HTML_FORM = '''
 '''
 
 def parse_cookies(cookie_string):
+    """Convert cookies from string to dictionary format"""
     cookies = {}
     for item in cookie_string.split("; "):
         key, value = item.split("=", 1)
         cookies[key] = value
     return cookies
 
-def extract_post_id(url):
-    match = re.search(r"(?:posts/|permalink.php\?story_fbid=|fbid=)(\d+)", url)
+def get_fb_dtsg(session):
+    """Fetch fb_dtsg token from Facebook"""
+    response = session.get("https://m.facebook.com/")
+    match = re.search(r'name="fb_dtsg" value="(.*?)"', response.text)
     return match.group(1) if match else None
 
 @app.route('/')
@@ -52,6 +55,7 @@ def submit():
     post_url = request.form['post_url']
     interval = int(request.form['interval'])
 
+    # Read Files
     try:
         cookies_string = request.files['cookies_file'].read().decode('utf-8').strip()
         comments = request.files['comment_file'].read().decode('utf-8').splitlines()
@@ -60,48 +64,42 @@ def submit():
 
     cookies = parse_cookies(cookies_string)
 
-    post_id = extract_post_id(post_url)
+    # Extract Post ID
+    post_id_match = re.search(r'/posts/(\d+)', post_url)
+    post_id = post_id_match.group(1) if post_id_match else None
     if not post_id:
         return render_template_string(HTML_FORM, message="❌ Invalid Post URL!")
 
-    session = requests.Session()
-    session.cookies.update(cookies)
-
-    # **Step 1: CSRF Token Lo**
-    home_page = session.get("https://m.facebook.com/home.php")
-    fb_dtsg_match = re.search(r'name="fb_dtsg" value="(.*?)"', home_page.text)
-    jazoest_match = re.search(r'name="jazoest" value="(.*?)"', home_page.text)
-
-    if not fb_dtsg_match or not jazoest_match:
-        return render_template_string(HTML_FORM, message="❌ Failed to get CSRF token. Invalid cookies!")
-
-    fb_dtsg = fb_dtsg_match.group(1)
-    jazoest = jazoest_match.group(1)
-
+    url = f"https://m.facebook.com/a/comment.php?ft_ent_identifier={post_id}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Linux; Android 7.1.2; Redmi 5A) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.181 Mobile Safari/537.36",
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Origin": "https://m.facebook.com",
-        "Referer": f"https://m.facebook.com/{post_id}"
+        "Content-Type": "application/x-www-form-urlencoded"
     }
+
+    session = requests.Session()
+    session.headers.update(headers)
+    session.cookies.update(cookies)
+
+    # Get fb_dtsg token
+    fb_dtsg = get_fb_dtsg(session)
+    if not fb_dtsg:
+        return render_template_string(HTML_FORM, message="❌ Failed to fetch fb_dtsg token!")
 
     success_count = 0
     for comment in comments:
         payload = {
             "fb_dtsg": fb_dtsg,
-            "jazoest": jazoest,
             "comment_text": comment
         }
+        response = session.post(url, data=payload)
 
-        comment_url = f"https://m.facebook.com/a/comment.php?ft_ent_identifier={post_id}"
-        response = session.post(comment_url, data=payload, headers=headers)
-
-        if "comment" in response.url:
+        if response.status_code == 200:
             success_count += 1
         else:
-            return render_template_string(HTML_FORM, message="❌ Comment Failed! Check Cookies.")
+            return render_template_string(HTML_FORM, message="❌ Comment Failed! Cookies Expired or Invalid.")
 
-        time.sleep(interval + random.uniform(1, 5))
+        # Randomized Delay to Avoid Detection
+        time.sleep(interval + random.uniform(1, 3))
 
     return render_template_string(HTML_FORM, message=f"✅ {success_count} Comments Successfully Posted!")
 
