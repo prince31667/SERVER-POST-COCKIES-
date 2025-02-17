@@ -1,107 +1,46 @@
-from flask import Flask, request, render_template_string
 import requests
 import time
-import random
-import re
 
-app = Flask(__name__)
+# 🔹 Facebook पोस्ट ID
+post_id = "555023942715392"
 
-HTML_FORM = '''
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Auto Comment - Cookies Method</title>
-    <style>
-        body { background-color: black; color: white; text-align: center; font-family: Arial, sans-serif; }
-        input, button { width: 300px; padding: 10px; margin: 5px; border-radius: 5px; border: none; }
-        button { background-color: green; color: white; cursor: pointer; }
-        input[type="file"] { background-color: #444; color: white; }
-    </style>
-</head>
-<body>
-    <h1>Facebook Auto Comment (Cookies Method)</h1>
-    <form method="POST" action="/submit" enctype="multipart/form-data">
-        <input type="file" name="cookies_file" accept=".txt" required><br>
-        <input type="text" name="post_url" placeholder="Enter Facebook Post URL" required><br>
-        <input type="file" name="comment_file" accept=".txt" required><br>
-        <input type="number" name="interval" placeholder="Interval in Seconds (e.g., 5)" required><br>
-        <button type="submit">Submit</button>
-    </form>
-    {% if message %}<p>{{ message }}</p>{% endif %}
-</body>
-</html>
-'''
+# 🔹 Facebook कुकीज़ (अपनी वैध Cookies डालें)
+cookies = {
+    "datr": "OiqtZ7kwfUef3svGUSdK4QWY",
+    "sb": "OiqtZ0HC_GuEQ9hu3IQY-K2p",
+    "c_user": "61559728229012",
+    "xs": "6:jefp00XZqPIsoQ:2:1739401810:-1:4885",
+    "fr": "0HPDRxqyG4iGJICOc.AWWmSxFA1MGyKgzQRZlP2G5bb0eBvl-17w3Z0g.BnrSo6..AAA.0.0.BnrToP.AWVr9bobbVo"
+}
 
-def parse_cookies(cookie_string):
-    """Convert cookies from string to dictionary format"""
-    cookies = {}
-    for item in cookie_string.split("; "):
-        key, value = item.split("=", 1)
-        cookies[key] = value
-    return cookies
+# 🔹 Facebook Headers
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Content-Type": "application/x-www-form-urlencoded"
+}
 
-def get_fb_dtsg(session):
-    """Fetch fb_dtsg token from Facebook"""
-    response = session.get("https://m.facebook.com/")
-    match = re.search(r'name="fb_dtsg" value="(.*?)"', response.text)
-    return match.group(1) if match else None
+# 🔹 Comment Payload (जो कमेंट पोस्ट होगा)
+comment_text = "SAMART X3 YASH H3R3"
 
-@app.route('/')
-def index():
-    return render_template_string(HTML_FORM)
+# 🔹 Facebook GraphQL API का URL
+url = f"https://www.facebook.com/api/graphql/"
 
-@app.route('/submit', methods=['POST'])
-def submit():
-    post_url = request.form['post_url']
-    interval = int(request.form['interval'])
+# 🔹 डेटा (Payload)
+payload = {
+    "ft_ent_identifier": post_id,
+    "comment_text": comment_text
+}
 
-    # Read Files
-    try:
-        cookies_string = request.files['cookies_file'].read().decode('utf-8').strip()
-        comments = request.files['comment_file'].read().decode('utf-8').splitlines()
-    except Exception:
-        return render_template_string(HTML_FORM, message="❌ Invalid Cookies or Comment File!")
+# 🔹 10 बार कमेंट करने के लिए लूप
+for i in range(10):  # आप जितनी बार चाहें उतनी बार चला सकते हैं
+    response = requests.post(url, headers=headers, cookies=cookies, data=payload)
 
-    cookies = parse_cookies(cookies_string)
+    if response.status_code == 200:
+        print(f"✅ [{i+1}] सफलतापूर्वक Comment पोस्ट हो गया: {comment_text}")
+    else:
+        print(f"❌ [{i+1}] Error: {response.text}")
 
-    # Extract Post ID
-    post_id_match = re.search(r'/posts/(\d+)', post_url)
-    post_id = post_id_match.group(1) if post_id_match else None
-    if not post_id:
-        return render_template_string(HTML_FORM, message="❌ Invalid Post URL!")
-
-    url = f"https://m.facebook.com/a/comment.php?ft_ent_identifier={post_id}"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 7.1.2; Redmi 5A) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.181 Mobile Safari/537.36",
-        "Content-Type": "application/x-www-form-urlencoded"
-    }
-
-    session = requests.Session()
-    session.headers.update(headers)
-    session.cookies.update(cookies)
-
-    # Get fb_dtsg token
-    fb_dtsg = get_fb_dtsg(session)
-    if not fb_dtsg:
-        return render_template_string(HTML_FORM, message="❌ Failed to fetch fb_dtsg token!")
-
-    success_count = 0
-    for comment in comments:
-        payload = {
-            "fb_dtsg": fb_dtsg,
-            "comment_text": comment
-        }
-        response = session.post(url, data=payload)
-
-        if response.status_code == 200:
-            success_count += 1
-        else:
-            return render_template_string(HTML_FORM, message="❌ Comment Failed! Cookies Expired or Invalid.")
-
-        # Randomized Delay to Avoid Detection
-        time.sleep(interval + random.uniform(1, 3))
-
-    return render_template_string(HTML_FORM, message=f"✅ {success_count} Comments Successfully Posted!")
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
+    # 🔹 170 सेकंड (2 मिनट 50 सेकंड) का डिले
+    print("⏳ अगला कमेंट 170 सेकंड बाद पोस्ट होगा...")
+    time.sleep(170)
