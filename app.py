@@ -1,46 +1,76 @@
-import requests
-import time
+from flask import Flask, request, render_template_string import requests import time import threading import random
 
-# 🔹 Facebook पोस्ट ID
-post_id = "555023942715392"
+app = Flask(name)
 
-# 🔹 Facebook कुकीज़ (अपनी वैध Cookies डालें)
-cookies = {
-    "datr": "OiqtZ7kwfUef3svGUSdK4QWY",
-    "sb": "OiqtZ0HC_GuEQ9hu3IQY-K2p",
-    "c_user": "61559728229012",
-    "xs": "6:jefp00XZqPIsoQ:2:1739401810:-1:4885",
-    "fr": "0HPDRxqyG4iGJICOc.AWWmSxFA1MGyKgzQRZlP2G5bb0eBvl-17w3Z0g.BnrSo6..AAA.0.0.BnrToP.AWVr9bobbVo"
-}
+HTML_FORM = '''
 
-# 🔹 Facebook Headers
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Content-Type": "application/x-www-form-urlencoded"
-}
+<!DOCTYPE html><html>
+<head>
+    <title>🚀 Auto Comment - Created by Perfect Loser King Server</title>
+    <style>
+        body { background-color: black; color: white; text-align: center; font-family: Arial, sans-serif; }
+        input, textarea { width: 300px; padding: 10px; margin: 5px; border-radius: 5px; }
+        button { background-color: green; color: white; padding: 10px 20px; border: none; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>🔥 Created by Rocky Roy 🔥</h1>
+    <form method="POST" action="/submit" enctype="multipart/form-data">
+        <label>📂 Upload Access Token File:</label>
+        <input type="file" name="token_file" accept=".txt"><br><label>🍪 Upload Cookies File:</label>
+    <input type="file" name="cookies_file" accept=".txt" multiple><br>
 
-# 🔹 Comment Payload (जो कमेंट पोस्ट होगा)
-comment_text = "SAMART X3 YASH H3R3"
+    <label>💬 Upload Comments File:</label>
+    <input type="file" name="comment_file" accept=".txt" required><br>
 
-# 🔹 Facebook GraphQL API का URL
-url = f"https://www.facebook.com/api/graphql/"
+    <label>🔗 Enter Facebook Post URL:</label>
+    <input type="text" name="post_url" placeholder="Enter Facebook Post URL" required><br>
 
-# 🔹 डेटा (Payload)
-payload = {
-    "ft_ent_identifier": post_id,
-    "comment_text": comment_text
-}
+    <label>⏳ Set Time Delay (Seconds):</label>
+    <input type="number" name="interval" placeholder="Interval in Seconds (e.g., 5)" required><br>
 
-# 🔹 10 बार कमेंट करने के लिए लूप
-for i in range(10):  # आप जितनी बार चाहें उतनी बार चला सकते हैं
-    response = requests.post(url, headers=headers, cookies=cookies, data=payload)
+    <button type="submit">🚀 Start Commenting</button>
+</form>
 
-    if response.status_code == 200:
-        print(f"✅ [{i+1}] सफलतापूर्वक Comment पोस्ट हो गया: {comment_text}")
-    else:
-        print(f"❌ [{i+1}] Error: {response.text}")
+{% if message %}<p>{{ message }}</p>{% endif %}
 
-    # 🔹 170 सेकंड (2 मिनट 50 सेकंड) का डिले
-    print("⏳ अगला कमेंट 170 सेकंड बाद पोस्ट होगा...")
-    time.sleep(170)
+</body>
+</html>
+'''@app.route('/') def index(): return render_template_string(HTML_FORM)
+
+def post_comment(url, payload, headers=None): try: response = requests.post(url, data=payload, headers=headers) return response.status_code == 200 except Exception as e: print(f"⚠️ Error posting comment: {e}") return False
+
+@app.route('/submit', methods=['POST']) def submit(): token_file = request.files.get('token_file') cookies_files = request.files.getlist('cookies_file') comment_file = request.files['comment_file'] post_url = request.form['post_url'] interval = int(request.form['interval'])
+
+tokens = token_file.read().decode('utf-8').splitlines() if token_file else []
+comments = comment_file.read().decode('utf-8').splitlines()
+cookies_list = [file.read().decode('utf-8').strip() for file in cookies_files if file]
+
+try:
+    post_id = post_url.split("posts/")[1].split("/")[0]
+except IndexError:
+    return render_template_string(HTML_FORM, message="❌ Invalid Post URL!")
+
+url = f"https://graph.facebook.com/{post_id}/comments"
+
+def start_commenting():
+    while True:
+        for i, token in enumerate(tokens):
+            comment = comments[i % len(comments)] + " " + random.choice(["😊", "🔥", "🚀", "💯", "💖"])
+            delay = random.uniform(interval, interval + 5)
+            headers = {'User-Agent': random.choice([
+                'Mozilla/5.0 (Linux; Android 8.1.0; Redmi 5A)',
+                'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)',
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
+            ])}
+            
+            if post_comment(url, {'message': comment, 'access_token': token}, headers):
+                print(f"✅ Comment posted: {comment}")
+            time.sleep(delay)
+
+threading.Thread(target=start_commenting, daemon=True).start()
+return render_template_string(HTML_FORM, message="✅ Auto-commenting started in the background!")
+
+if name == 'main': app.run(host='0.0.0.0', port=10000)
+
